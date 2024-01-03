@@ -13,51 +13,7 @@ with an efficient hardware-aware design and implementation in the spirit of [Fla
 
 ## Installation
 
-No needed
-
-## Usage
-
-We expose several levels of interface with the Mamba model.
-
-### Selective SSM
-
-Mamba is based on a selective SSM layer, which is the focus of the paper (Section 3; Algorithm 2).
-
-Source: [ops/selective_scan_interface.py](mamba_ssm/ops/selective_scan_interface.py).
-
-### Mamba Block
-
-The main module of this repository is the Mamba architecture block wrapping the selective SSM.
-
-Source: [modules/mamba_simple.py](mamba_ssm/modules/mamba_simple.py).
-
-Usage:
-```
-from mamba_ssm import Mamba
-
-batch, length, dim = 2, 64, 16
-x = torch.randn(batch, length, dim).to("cuda")
-model = Mamba(
-    # This module uses roughly 3 * expand * d_model^2 parameters
-    d_model=dim, # Model dimension d_model
-    d_state=16,  # SSM state expansion factor
-    d_conv=4,    # Local convolution width
-    expand=2,    # Block expansion factor
-).to("cuda")
-y = model(x)
-assert y.shape == x.shape
-```
-
-### Mamba Language Model
-
-Finally, we provide an example of a complete language model: a deep sequence model backbone (with repeating Mamba blocks) + language model head.
-
-Source: [models/mixer_seq_simple.py](mamba_ssm/models/mixer_seq_simple.py).
-
-This is an example of how to integrate Mamba into an end-to-end neural network.
-This example is used in the generation scripts below.
-
-
+Not needed
 
 ## Pretrained Models
 
@@ -90,8 +46,6 @@ The script [mamba_generate.py](mamba_generate.py)
 1. autoloads a model from the Hugging Face Hub,
 2. generates completions of a user-specified prompt,
 3. measures the inference speed of this generation.
-
-Other configurable options include the top-p (nucleus sampling) probability, and the softmax temperature.
 
 ### Example
 

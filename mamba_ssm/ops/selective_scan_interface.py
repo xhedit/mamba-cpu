@@ -37,9 +37,6 @@ def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_
     deltaA = torch.exp(torch.einsum('bdl,dn->bdln', delta, A))
     deltaB_u = torch.einsum('bdl,bnl,bdl->bdln', delta, B, u)
 
-    #if is_variable_C and C.dim() == 4:
-    #    C = repeat(C, "B G N L -> B (G H) N L", H=dim // C.shape[1])
-
     ys = []
     last_state = None
     for i in range(u.shape[2]):
