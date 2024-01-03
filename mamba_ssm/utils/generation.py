@@ -139,20 +139,7 @@ def decode(
 
     batch_size, seqlen_og = input_ids.shape
     teacher_output_len = teacher_outputs.shape[1] if teacher_outputs is not None else 0
-    if cg:
-        if not hasattr(model, "_decoding_cache"):
-            model._decoding_cache = None
-        model._decoding_cache = update_graph_cache(
-            model,
-            model._decoding_cache,
-            batch_size,
-            seqlen_og,
-            max_length,
-        )
-        inference_params = model._decoding_cache.inference_params
-        inference_params.reset(max_length, batch_size)
-    else:
-        inference_params = InferenceParams(max_seqlen=max_length, max_batch_size=batch_size)
+    inference_params = InferenceParams(max_seqlen=max_length, max_batch_size=batch_size)
 
     def get_logits(input_ids, inference_params):
         decoding = inference_params.seqlen_offset > 0
@@ -165,17 +152,12 @@ def decode(
             )
         else:
             position_ids = None
-        if not cg or not decoding:
-            logits = model(
-                input_ids,
-                position_ids=position_ids,
-                inference_params=inference_params,
-                num_last_tokens=1,
-            ).logits.squeeze(dim=1)
-        else:
-            logits = model._decoding_cache.run(
-                input_ids, position_ids, inference_params.seqlen_offset
-            ).squeeze(dim=1)
+        logits = model(
+            input_ids,
+            position_ids=position_ids,
+            inference_params=inference_params,
+            num_last_tokens=1,
+        ).logits.squeeze(dim=1)
         return logits[..., :vocab_size] if vocab_size is not None else logits
 
     def sample_tokens(logits, inference_params):
@@ -220,7 +202,7 @@ def decode(
         streamer.end()
     if enable_timing:
         end.record()
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
         print(f"Prompt processing + decoding time: {(start.elapsed_time(end)):.0f}ms")
     output_cls = GreedySearchDecoderOnlyOutput if top_k == 1 else SampleDecoderOnlyOutput
     return output_cls(sequences=torch.cat(sequences, dim=1), scores=tuple(scores))
