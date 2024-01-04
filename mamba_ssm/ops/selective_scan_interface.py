@@ -38,12 +38,9 @@ def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_
     deltaB_u = torch.einsum('bdl,bnl,bdl->bdln', delta, B, u)
 
     ys = []
-    last_state = None
     for i in range(u.shape[2]):
         x = deltaA[:, :, i] * x + deltaB_u[:, :, i]
         y = torch.einsum('bdn,bn->bd', x, C[:, :, i])
-        if i == u.shape[2] - 1:
-            last_state = x
         #if y.is_complex():
         #    y = y.real * 2
         ys.append(y)
@@ -53,4 +50,4 @@ def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_
     if z is not None:
         out = out * F.silu(z)
     out = out.to(dtype=dtype_in)
-    return out if not return_last_state else (out, last_state)
+    return out if not return_last_state else (out, x)
