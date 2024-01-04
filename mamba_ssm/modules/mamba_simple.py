@@ -11,11 +11,7 @@ from torch import Tensor
 from einops import rearrange, repeat
 
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
-
-try:
-    from mamba_ssm.ops.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
-except ImportError:
-    RMSNorm, layer_norm_fn, rms_norm_fn = None, None, None
+from mamba_ssm.ops.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
 
 
 class Mamba(nn.Module):
