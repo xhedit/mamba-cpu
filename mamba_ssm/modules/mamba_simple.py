@@ -114,6 +114,7 @@ class Mamba(nn.Module):
 
         dt = self.dt_proj.weight @ dt.t()
         dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
+        dt = F.softplus(dt + self.dt_proj.bias[..., None].float())
 
         B = rearrange(B, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
         C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
@@ -127,8 +128,6 @@ class Mamba(nn.Module):
             C,
             self.D.float(),
             z=z,
-            delta_bias=self.dt_proj.bias.float(),
-            delta_softplus=True,
             return_last_state=ssm_state is not None,
         )
         if ssm_state is not None:
@@ -157,11 +156,12 @@ class Mamba(nn.Module):
         dt, B, C = torch.split(x_db, [self.dt_rank, self.d_state, self.d_state], dim=-1)
         # Don't add dt_bias here
         dt = F.linear(dt, self.dt_proj.weight)  # (B d_inner)
+        dt = F.softplus(dt + self.dt_proj.bias.to(dtype=dt.dtype))
+
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # SSM step
         # Discretize A and B
-        dt = F.softplus(dt + self.dt_proj.bias.to(dtype=dt.dtype))
         dA = torch.exp(torch.einsum("bd,dn->bdn", dt, A))
         dB = torch.einsum("bd,bn->bdn", dt, B)
         ssm_state.copy_(ssm_state * dA + rearrange(x, "b d -> b d 1") * dB)

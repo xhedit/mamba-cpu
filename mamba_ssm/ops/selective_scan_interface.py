@@ -5,8 +5,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 
 
-def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_softplus=False,
-                      return_last_state=False):
+def selective_scan_fn(u, delta, A, B, C, D=None, z=None, return_last_state=False):
     """
     u: r(B D L)
     delta: r(B D L)
@@ -22,13 +21,9 @@ def selective_scan_fn(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta_
     """
     dtype_in = u.dtype
     u = u.float()
-    delta = delta.float()
-    if delta_bias is not None:
-        delta = delta + delta_bias[..., None].float()
-    if delta_softplus:
-        delta = F.softplus(delta)
     B = B.float()
     C = C.float()
+    delta = delta.float()
 
     batch, dim, dstate = u.shape[0], A.shape[0], A.shape[1]
 
