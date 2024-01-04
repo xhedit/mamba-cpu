@@ -79,13 +79,11 @@ class Mamba(nn.Module):
         """
         batch, seqlen, dim = hidden_states.shape
 
-        conv_state, ssm_state = None, None
-        if inference_params is not None:
-            conv_state, ssm_state = self._get_states_from_cache(inference_params, batch)
-            if inference_params.seqlen_offset > 0:
-                # The states are updated inplace
-                out, _, _ = self.step(hidden_states, conv_state, ssm_state)
-                return out
+        conv_state, ssm_state = self._get_states_from_cache(inference_params, batch)
+        if inference_params.seqlen_offset > 0:
+            # The states are updated inplace
+            out, _, _ = self.step(hidden_states, conv_state, ssm_state)
+            return out
 
         # We do matmul and transpose BLH -> HBL at the same time
         xz = rearrange(
@@ -100,10 +98,9 @@ class Mamba(nn.Module):
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # Compute short convolution
-        if conv_state is not None:
-            # If we just take x[:, :, -self.d_conv :], it will error if seqlen < self.d_conv
-            # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
-            conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (B D W)
+        # If we just take x[:, :, -self.d_conv :], it will error if seqlen < self.d_conv
+        # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
+        conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (B D W)
         x = self.act(self.conv1d(x)[..., :seqlen])
 
         # We're careful here about the layout, to avoid extra transposes.
@@ -120,10 +117,8 @@ class Mamba(nn.Module):
         C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
 
         assert self.activation in ["silu", "swish"]
-        y = selective_scan(x, dt, A, B, C, self.D.float(), z)
-        if ssm_state is not None:
-            y, last_state = y
-            ssm_state.copy_(last_state)
+        y, last_state = selective_scan(x, dt, A, B, C, self.D.float(), z)
+        ssm_state.copy_(last_state)
         y = rearrange(y, "b d l -> b l d")
         out = self.out_proj(y)
         return out
@@ -139,8 +134,7 @@ class Mamba(nn.Module):
         conv_state.copy_(torch.roll(conv_state, shifts=-1, dims=-1))  # Update state (B D W)
         conv_state[:, :, -1] = x
         x = torch.sum(conv_state * rearrange(self.conv1d.weight, "d 1 w -> d w"), dim=-1)  # (B D)
-        if self.conv1d.bias is not None:
-            x = x + self.conv1d.bias
+        x = x + self.conv1d.bias
         x = self.act(x).to(dtype=dtype)
 
         x_db = self.x_proj(x)  # (B dt_rank+2*d_state)
