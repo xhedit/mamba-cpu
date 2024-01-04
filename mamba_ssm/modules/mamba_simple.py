@@ -128,7 +128,6 @@ class Mamba(nn.Module):
             C,
             self.D.float(),
             z=z,
-            return_last_state=ssm_state is not None,
         )
         if ssm_state is not None:
             y, last_state = y

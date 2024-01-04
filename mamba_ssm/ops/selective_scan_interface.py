@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 
 
-def selective_scan_fn(u, delta, A, B, C, D=None, z=None, return_last_state=False):
+def selective_scan_fn(u, delta, A, B, C, D=None, z=None):
     """
     u: r(B D L)
     delta: r(B D L)
@@ -45,4 +45,4 @@ def selective_scan_fn(u, delta, A, B, C, D=None, z=None, return_last_state=False
     if z is not None:
         out = out * F.silu(z)
     out = out.to(dtype=dtype_in)
-    return out if not return_last_state else (out, x)
+    return (out, x)
