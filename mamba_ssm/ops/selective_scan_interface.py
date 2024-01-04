@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 
 
-def selective_scan_fn(u, delta, A, B, C, D=None, z=None):
+def selective_scan(u, delta, A, B, C, D=None, z=None):
     """
     u: r(B D L)
     delta: r(B D L)

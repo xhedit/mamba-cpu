@@ -10,7 +10,7 @@ from torch import Tensor
 
 from einops import rearrange, repeat
 
-from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
+from mamba_ssm.ops.selective_scan_interface import selective_scan
 from mamba_ssm.ops.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
 
 
@@ -120,15 +120,7 @@ class Mamba(nn.Module):
         C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
 
         assert self.activation in ["silu", "swish"]
-        y = selective_scan_fn(
-            x,
-            dt,
-            A,
-            B,
-            C,
-            self.D.float(),
-            z=z,
-        )
+        y = selective_scan(x, dt, A, B, C, self.D.float(), z)
         if ssm_state is not None:
             y, last_state = y
             ssm_state.copy_(last_state)
