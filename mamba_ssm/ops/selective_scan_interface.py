@@ -25,7 +25,7 @@ def selective_scan(u, delta, A, B, C, D=None, z=None):
     C = C.float()
     delta = delta.float()
 
-    batch, dim, dstate = u.shape[0], A.shape[0], A.shape[1]
+    batch, seqlen, dim, dstate = u.shape[0], u.shape[2], A.shape[0], A.shape[1]
 
     x = A.new_zeros((batch, dim, dstate))
 
@@ -33,7 +33,7 @@ def selective_scan(u, delta, A, B, C, D=None, z=None):
     deltaB_u = torch.einsum('bdl,bnl,bdl->bdln', delta, B, u)
 
     ys = []
-    for i in range(u.shape[2]):
+    for i in range(seqlen):
         x = deltaA[:, :, i] * x + deltaB_u[:, :, i]
         y = torch.einsum('bdn,bn->bd', x, C[:, :, i])
         #if y.is_complex():
