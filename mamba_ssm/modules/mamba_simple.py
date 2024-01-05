@@ -65,6 +65,7 @@ class Mamba(nn.Module):
         self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True, **factory_kwargs)
 
         self.A_log = nn.Parameter(torch.empty(self.d_inner, self.d_state, **factory_kwargs))
+        self.A = None
 
         # D "skip" parameter
         self.D = nn.Parameter(torch.ones(self.d_inner, device=device))  # Keep in fp32
@@ -98,11 +99,13 @@ class Mamba(nn.Module):
         dt = F.linear(dt, self.dt_proj.weight)  # (d_inner)
         dt = F.softplus(dt + self.dt_proj.bias.to(dtype=dt.dtype))
 
-        A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
+        # Initialize A only once per layer
+        if self.A is None:
+            self.A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # SSM step
         # Discretize A and B
-        dA = torch.exp(torch.einsum("d,dn->dn", dt, A))
+        dA = torch.exp(torch.einsum("d,dn->dn", dt, self.A))
         dB = torch.einsum("d,n->dn", dt, B)
         ssm_state.copy_(ssm_state * dA + rearrange(x, "d -> d 1") * dB)
         y = torch.einsum("dn,n->d", ssm_state.to(dtype), C)
