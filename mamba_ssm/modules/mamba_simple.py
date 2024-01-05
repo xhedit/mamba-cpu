@@ -85,37 +85,34 @@ class Mamba(nn.Module):
             out, _, _ = self.step(hidden_states, conv_state, ssm_state)
             return out
 
-        # We do matmul and transpose LH -> HL at the same time
-        xz = rearrange(
-            self.in_proj.weight @ rearrange(hidden_states, "l d -> d l"),
-            "d l -> d l"
-        )
-        if self.in_proj.bias is not None:
-            xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
-        x, z = xz.chunk(2, dim=0)
+        #xz = self.in_proj.weight @ hidden_states.T
+        #if self.in_proj.bias is not None:
+        #    xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
+        xz = self.in_proj(hidden_states)
+        x, z = xz.chunk(2, dim=-1)
 
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # Compute short convolution
         # If we just take x[:, -self.d_conv :], it will error if seqlen < self.d_conv
         # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
+        x = rearrange(x, "l d -> d l")
         conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (d w)
         x = self.conv1d(x)[..., :seqlen]
         x = self.act(x)
+        x = rearrange(x, "d l -> l d")
 
         # We're careful here about the layout, to avoid extra transposes.
         # We want dt to have d as the slowest moving dimension
         # and L as the fastest moving dimension, since those are what the ssm_scan kernel expects.
-        x_dbl = self.x_proj(rearrange(x, "d l -> l d"))  # (l d)
+        x_dbl = self.x_proj(x)  # (l d)
         dt, B, C = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=-1)
 
         dt = self.dt_proj.weight @ dt.t()
         dt = F.softplus(dt + self.dt_proj.bias[..., None].float())
 
-        assert self.activation in ["silu", "swish"]
         y, last_state = selective_scan(x, dt, A, B, C, self.D.float(), z)
         ssm_state.copy_(last_state)
-        y = rearrange(y, "d l -> l d")
         out = self.out_proj(y)
         return out
 

@@ -25,12 +25,12 @@ def selective_scan(u, delta, A, B, C, D=None, z=None):
     C = C.float()
     delta = delta.float()
 
-    seqlen, dim, dstate = u.shape[1], A.shape[0], A.shape[1]
+    seqlen, dim, dstate = u.shape[0], A.shape[0], A.shape[1]
 
     x = A.new_zeros((dim, dstate))
 
     deltaA = torch.exp(torch.einsum('dl,dn->dln', delta, A))
-    deltaB_u = torch.einsum('dl,ln,dl->dln', delta, B, u)
+    deltaB_u = torch.einsum('dl,ln,ld->dln', delta, B, u)
 
     ys = []
     for i in range(seqlen):
@@ -39,9 +39,9 @@ def selective_scan(u, delta, A, B, C, D=None, z=None):
         #if y.is_complex():
         #    y = y.real * 2
         ys.append(y)
-    y = torch.stack(ys, dim=1) # (dim L)
+    y = torch.stack(ys, dim=0) # (l d)
 
-    out = y + u * rearrange(D, "d -> d 1")
+    out = y + u * D
     if z is not None:
         out = out * F.silu(z)
     out = out.to(dtype=dtype_in)
