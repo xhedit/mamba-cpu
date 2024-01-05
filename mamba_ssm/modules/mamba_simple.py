@@ -10,7 +10,6 @@ from torch import Tensor
 
 from einops import rearrange, repeat
 
-from mamba_ssm.ops.selective_scan_interface import selective_scan
 from mamba_ssm.ops.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
 
 
@@ -77,48 +76,11 @@ class Mamba(nn.Module):
         hidden_states: (L, D)
         Returns: same shape as hidden_states
         """
+        dtype = hidden_states.dtype
         seqlen, dim = hidden_states.shape
+        assert seqlen == 1, "Can decode only 1 token at a time"
 
         conv_state, ssm_state = self._get_states_from_cache(inference_params)
-        if True:  #if inference_params.seqlen_offset > 0:
-            # The states are updated inplace
-            out, _, _ = self.step(hidden_states, conv_state, ssm_state)
-            return out
-
-        #xz = self.in_proj.weight @ hidden_states.T
-        #if self.in_proj.bias is not None:
-        #    xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
-        xz = self.in_proj(hidden_states)
-        x, z = xz.chunk(2, dim=-1)
-
-        A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
-
-        # Compute short convolution
-        # If we just take x[:, -self.d_conv :], it will error if seqlen < self.d_conv
-        # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
-        x = rearrange(x, "l d -> d l")
-        conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (d w)
-        x = self.conv1d(x)[..., :seqlen]
-        x = self.act(x)
-        x = rearrange(x, "d l -> l d")
-
-        # We're careful here about the layout, to avoid extra transposes.
-        # We want dt to have d as the slowest moving dimension
-        # and L as the fastest moving dimension, since those are what the ssm_scan kernel expects.
-        x_dbl = self.x_proj(x)  # (l d)
-        dt, B, C = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=-1)
-
-        dt = self.dt_proj.weight @ dt.t()
-        dt = F.softplus(dt + self.dt_proj.bias[..., None].float())
-
-        y, last_state = selective_scan(x, dt, A, B, C, self.D.float(), z)
-        ssm_state.copy_(last_state)
-        out = self.out_proj(y)
-        return out
-
-    def step(self, hidden_states, conv_state, ssm_state):
-        dtype = hidden_states.dtype
-        assert hidden_states.shape[0] == 1, "Only support decoding with 1 token at a time for now"
 
         xz = self.in_proj(hidden_states.squeeze(1))  # (2d)
         x, z = xz.chunk(2, dim=-1)  # (d)
@@ -148,7 +110,7 @@ class Mamba(nn.Module):
         y = y * self.act(z)  # (d)
 
         out = self.out_proj(y)
-        return out, conv_state, ssm_state
+        return out
 
     def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
         device = self.out_proj.weight.device
