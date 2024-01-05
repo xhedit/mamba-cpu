@@ -96,9 +96,9 @@ class MixerModel(nn.Module):
             d_model, eps=norm_epsilon, **factory_kwargs
         )
 
-    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
         return {
-            i: layer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+            i: layer.allocate_inference_cache(max_seqlen, dtype=dtype, **kwargs)
             for i, layer in enumerate(self.layers)
         }
 
@@ -154,8 +154,8 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
     def tie_weights(self):
         self.lm_head.weight = self.backbone.embedding.weight
 
-    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
-        return self.backbone.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
+        return self.backbone.allocate_inference_cache(max_seqlen, dtype=dtype, **kwargs)
 
     def forward(self, input_ids, position_ids=None, inference_params=None, num_last_tokens=0):
         """
@@ -164,7 +164,7 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
         """
         hidden_states = self.backbone(input_ids, inference_params=inference_params)
         if num_last_tokens > 0:
-            hidden_states = hidden_states[:, -num_last_tokens:]
+            hidden_states = hidden_states[-num_last_tokens:]
         lm_logits = self.lm_head(hidden_states)
         CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
         return CausalLMOutput(logits=lm_logits)

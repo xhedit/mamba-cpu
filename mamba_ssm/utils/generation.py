@@ -18,7 +18,7 @@ class InferenceParams:
     to efficienly calculate and store the context during inference."""
 
     max_seqlen: int
-    max_batch_size: int
+    max_batch_size: int = 1
     seqlen_offset: int = 0
     batch_size_offset: int = 0
     key_value_memory_dict: dict = field(default_factory=dict)
@@ -53,29 +53,29 @@ def modify_logits_for_top_p_filtering(logits, top_p):
     sorted_indices_to_remove = cumulative_probs <= (1 - top_p)
     # scatter sorted tensors to original indexing
     indices_to_remove = sorted_indices_to_remove.scatter(
-        1, sorted_indices, sorted_indices_to_remove
+        0, sorted_indices, sorted_indices_to_remove
     )
     logits.masked_fill_(indices_to_remove, float("-inf"))
 
 
 def modify_logit_for_repetition_penalty(logits, prev_output_tokens, repetition_penalty=1.0):
     """Apply repetition penalty. See https://arxiv.org/abs/1909.05858
-    logits: (batch_size, vocab_size)
-    prev_output_tokens: (batch_size, seq_len)
+    logits: (vocab_size)
+    prev_output_tokens: (seq_len)
     """
     if repetition_penalty == 1.0:
         return logits
-    score = torch.gather(logits, 1, prev_output_tokens)
+    score = torch.gather(logits, 0, prev_output_tokens)
     # if score < 0 then repetition penalty has to be multiplied to reduce the previous token probability
     score = torch.where(score < 0, score * repetition_penalty, score / repetition_penalty)
-    logits.scatter_(1, prev_output_tokens, score)
+    logits.scatter_(0, prev_output_tokens, score)
     return logits
 
 
 def sample(logits, top_k=1, top_p=0.0, temperature=1.0):
     """Sample from top-k logits.
     Arguments:
-        logits: Tensor of shape (batch_size, vocab_size)
+        logits: Tensor of shape (vocab_size)
     """
     if top_k == 1:  # Short-circuit for greedy decoding
         return logits.argmax(dim=-1)
@@ -135,15 +135,15 @@ def decode(
     if streamer is not None:
         streamer.put(input_ids.cpu())
 
-    batch_size, seqlen_og = input_ids.shape
+    seqlen_og = input_ids.shape
     teacher_output_len = teacher_outputs.shape[1] if teacher_outputs is not None else 0
-    inference_params = InferenceParams(max_seqlen=max_length, max_batch_size=batch_size)
+    inference_params = InferenceParams(max_seqlen=max_length)
 
     def get_logits(input_ids, inference_params):
         decoding = inference_params.seqlen_offset > 0
         if decoding:
             position_ids = torch.full(
-                (batch_size, 1),
+                (1,),
                 inference_params.seqlen_offset,
                 dtype=torch.long,
                 device=input_ids.device,
@@ -163,8 +163,7 @@ def decode(
             token = sample(logits, top_k=top_k, top_p=top_p, temperature=temperature)
         else:
             token = teacher_outputs[:, inference_params.seqlen_offset]
-        # return rearrange(token, "b -> b 1")
-        return token.unsqueeze(1)
+        return token
 
     def should_stop(current_token, inference_params):
         if inference_params.seqlen_offset == 0:
@@ -179,7 +178,7 @@ def decode(
     sequences_cat = input_ids
     while not should_stop(sequences[-1], inference_params):
         scores.append(get_logits(sequences[-1], inference_params))
-        inference_params.seqlen_offset += sequences[-1].shape[1]
+        inference_params.seqlen_offset += sequences[-1].shape[0]
         if repetition_penalty == 1.0:
             sampled_tokens = sample_tokens(scores[-1], inference_params)
         else:
@@ -187,14 +186,14 @@ def decode(
                 scores[-1].clone(), sequences_cat, repetition_penalty
             )
             sampled_tokens = sample_tokens(logits, inference_params)
-            sequences_cat = torch.cat([sequences_cat, sampled_tokens], dim=1)
+            sequences_cat = torch.cat([sequences_cat, sampled_tokens], dim=0)
         sequences.append(sampled_tokens)
         if streamer is not None:
             streamer.put(sampled_tokens.cpu())
     if streamer is not None:
         streamer.end()
     output_cls = GreedySearchDecoderOnlyOutput if top_k == 1 else SampleDecoderOnlyOutput
-    return output_cls(sequences=torch.cat(sequences, dim=1), scores=tuple(scores))
+    return output_cls(sequences=torch.cat(sequences, dim=0), scores=tuple(scores))
 
 
 class GenerationMixin:

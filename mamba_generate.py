@@ -53,6 +53,7 @@ else:
 max_length = input_ids.shape[1] + args.genlen
 
 if is_mamba:
+    input_ids = input_ids[0]  # remove the batch dimension
     fn = lambda: model.generate(
         input_ids=input_ids,
         max_length=max_length,
@@ -80,7 +81,7 @@ else:
     )
 out = fn()
 if args.prompt is not None:
-    print(tokenizer.batch_decode(out.sequences)[0])
+    print(''.join(tokenizer.batch_decode(out.sequences)))
 
-print(f"Prompt length: {len(input_ids[0])}, generation length: {len(out.sequences[0]) - len(input_ids[0])}")
+print(f"Prompt length: {len(input_ids)}, generation length: {len(out.sequences) - len(input_ids)}")
 print(f"{args.model_name} prompt processing + decoding time: {(time.time() - start) * 1000:.0f}ms")

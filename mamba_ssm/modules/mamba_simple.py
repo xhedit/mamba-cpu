@@ -74,115 +74,111 @@ class Mamba(nn.Module):
 
     def forward(self, hidden_states, inference_params=None):
         """
-        hidden_states: (B, L, D)
+        hidden_states: (L, D)
         Returns: same shape as hidden_states
         """
-        batch, seqlen, dim = hidden_states.shape
+        seqlen, dim = hidden_states.shape
 
-        conv_state, ssm_state = self._get_states_from_cache(inference_params, batch)
+        conv_state, ssm_state = self._get_states_from_cache(inference_params)
         if inference_params.seqlen_offset > 0:
             # The states are updated inplace
             out, _, _ = self.step(hidden_states, conv_state, ssm_state)
             return out
 
-        # We do matmul and transpose BLH -> HBL at the same time
+        # We do matmul and transpose LH -> HL at the same time
         xz = rearrange(
-            self.in_proj.weight @ rearrange(hidden_states, "b l d -> d (b l)"),
-            "d (b l) -> b d l",
+            self.in_proj.weight @ rearrange(hidden_states, "l d -> d l"),
+            "d l -> d l",
             l=seqlen,
         )
         if self.in_proj.bias is not None:
             xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
-        x, z = xz.chunk(2, dim=1)
+        x, z = xz.chunk(2, dim=0)
 
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # Compute short convolution
         # If we just take x[:, :, -self.d_conv :], it will error if seqlen < self.d_conv
         # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
-        conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (B D W)
+        conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (d w)
         x = self.act(self.conv1d(x)[..., :seqlen])
 
         # We're careful here about the layout, to avoid extra transposes.
         # We want dt to have d as the slowest moving dimension
         # and L as the fastest moving dimension, since those are what the ssm_scan kernel expects.
-        x_dbl = self.x_proj(rearrange(x, "b d l -> (b l) d"))  # (bl d)
+        x_dbl = self.x_proj(rearrange(x, "d l -> l d"))  # (l d)
         dt, B, C = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=-1)
 
         dt = self.dt_proj.weight @ dt.t()
-        dt = rearrange(dt, "d (b l) -> b d l", l=seqlen)
         dt = F.softplus(dt + self.dt_proj.bias[..., None].float())
 
-        B = rearrange(B, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
-        C = rearrange(C, "(b l) dstate -> b dstate l", l=seqlen).contiguous()
+        B = rearrange(B, "l dstate -> dstate l", l=seqlen).contiguous()
+        C = rearrange(C, "l dstate -> dstate l", l=seqlen).contiguous()
 
         assert self.activation in ["silu", "swish"]
         y, last_state = selective_scan(x, dt, A, B, C, self.D.float(), z)
         ssm_state.copy_(last_state)
-        y = rearrange(y, "b d l -> b l d")
+        y = rearrange(y, "d l -> l d")
         out = self.out_proj(y)
         return out
 
     def step(self, hidden_states, conv_state, ssm_state):
         dtype = hidden_states.dtype
-        assert hidden_states.shape[1] == 1, "Only support decoding with 1 token at a time for now"
+        assert hidden_states.shape[0] == 1, "Only support decoding with 1 token at a time for now"
 
-        xz = self.in_proj(hidden_states.squeeze(1))  # (B 2D)
-        x, z = xz.chunk(2, dim=-1)  # (B D)
+        xz = self.in_proj(hidden_states.squeeze(1))  # (2d)
+        x, z = xz.chunk(2, dim=-1)  # (d)
 
         # Conv step
-        conv_state.copy_(torch.roll(conv_state, shifts=-1, dims=-1))  # Update state (B D W)
-        conv_state[:, :, -1] = x
-        x = torch.sum(conv_state * rearrange(self.conv1d.weight, "d 1 w -> d w"), dim=-1)  # (B D)
+        conv_state.copy_(torch.roll(conv_state, shifts=-1, dims=-1))  # Update state (d w)
+        conv_state[:, -1] = x
+        x = torch.sum(conv_state * rearrange(self.conv1d.weight, "d 1 w -> d w"), dim=-1)  # (d)
         x = x + self.conv1d.bias
         x = self.act(x).to(dtype=dtype)
 
-        x_db = self.x_proj(x)  # (B dt_rank+2*d_state)
+        x_db = self.x_proj(x)  # (dt_rank+2*d_state)
         dt, B, C = torch.split(x_db, [self.dt_rank, self.d_state, self.d_state], dim=-1)
         # Don't add dt_bias here
-        dt = F.linear(dt, self.dt_proj.weight)  # (B d_inner)
+        dt = F.linear(dt, self.dt_proj.weight)  # (d_inner)
         dt = F.softplus(dt + self.dt_proj.bias.to(dtype=dt.dtype))
 
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # SSM step
         # Discretize A and B
-        dA = torch.exp(torch.einsum("bd,dn->bdn", dt, A))
-        dB = torch.einsum("bd,bn->bdn", dt, B)
-        ssm_state.copy_(ssm_state * dA + rearrange(x, "b d -> b d 1") * dB)
-        y = torch.einsum("bdn,bn->bd", ssm_state.to(dtype), C)
+        dA = torch.exp(torch.einsum("d,dn->dn", dt, A))
+        dB = torch.einsum("d,n->dn", dt, B)
+        ssm_state.copy_(ssm_state * dA + rearrange(x, "d -> d 1") * dB)
+        y = torch.einsum("dn,n->d", ssm_state.to(dtype), C)
         y = y + self.D.to(dtype) * x
-        y = y * self.act(z)  # (B D)
+        y = y * self.act(z)  # (d)
 
         out = self.out_proj(y)
-        return out.unsqueeze(1), conv_state, ssm_state
+        return out, conv_state, ssm_state
 
-    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
         device = self.out_proj.weight.device
         conv_dtype = self.conv1d.weight.dtype if dtype is None else dtype
         conv_state = torch.zeros(
-            batch_size, self.d_model * self.expand, self.d_conv, device=device, dtype=conv_dtype
+            self.d_model * self.expand, self.d_conv, device=device, dtype=conv_dtype
         )
         ssm_dtype = self.dt_proj.weight.dtype if dtype is None else dtype
         # ssm_dtype = torch.float32
         ssm_state = torch.zeros(
-            batch_size, self.d_model * self.expand, self.d_state, device=device, dtype=ssm_dtype
+            self.d_model * self.expand, self.d_state, device=device, dtype=ssm_dtype
         )
         return conv_state, ssm_state
 
-    def _get_states_from_cache(self, inference_params, batch_size, initialize_states=False):
+    def _get_states_from_cache(self, inference_params):
         assert self.layer_idx is not None
         if self.layer_idx not in inference_params.key_value_memory_dict:
-            batch_shape = (batch_size,)
             conv_state = torch.zeros(
-                batch_size,
                 self.d_model * self.expand,
                 self.d_conv,
                 device=self.conv1d.weight.device,
                 dtype=self.conv1d.weight.dtype,
             )
             ssm_state = torch.zeros(
-                batch_size,
                 self.d_model * self.expand,
                 self.d_state,
                 device=self.dt_proj.weight.device,
@@ -192,10 +188,6 @@ class Mamba(nn.Module):
             inference_params.key_value_memory_dict[self.layer_idx] = (conv_state, ssm_state)
         else:
             conv_state, ssm_state = inference_params.key_value_memory_dict[self.layer_idx]
-            # TODO: What if batch size changes between generation, and we reuse the same states?
-            if initialize_states:
-                conv_state.zero_()
-                ssm_state.zero_()
         return conv_state, ssm_state
 
 
@@ -242,5 +234,5 @@ class Block(nn.Module):
         hidden_states = self.mixer(hidden_states, inference_params=inference_params)
         return hidden_states, residual
 
-    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
-        return self.mixer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
+        return self.mixer.allocate_inference_cache(max_seqlen, dtype=dtype, **kwargs)

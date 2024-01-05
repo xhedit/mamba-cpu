@@ -7,17 +7,17 @@ from einops import rearrange, repeat
 
 def selective_scan(u, delta, A, B, C, D=None, z=None):
     """
-    u: r(B D L)
-    delta: r(B D L)
+    u: r(D L)
+    delta: r(D L)
     A: c(D N) or r(D N)
-    B: c(D N) or r(B N L) or r(B N 2L) or r(B G N L) or (B G N L)
-    C: c(D N) or r(B N L) or r(B N 2L) or r(B G N L) or (B G N L)
+    B: c(D N) or r(N L) or r(N 2L) or r(G N L) or (G N L)
+    C: c(D N) or r(N L) or r(N 2L) or r(G N L) or (G N L)
     D: r(D)
-    z: r(B D L)
+    z: r(D L)
     delta_bias: r(D), fp32
 
-    out: r(B D L)
-    last_state (optional): r(B D dstate) or c(B D dstate)
+    out: r(D L)
+    last_state (optional): r(D dstate) or c(D dstate)
     """
     dtype_in = u.dtype
     u = u.float()
@@ -25,21 +25,21 @@ def selective_scan(u, delta, A, B, C, D=None, z=None):
     C = C.float()
     delta = delta.float()
 
-    batch, seqlen, dim, dstate = u.shape[0], u.shape[2], A.shape[0], A.shape[1]
+    seqlen, dim, dstate = u.shape[1], A.shape[0], A.shape[1]
 
-    x = A.new_zeros((batch, dim, dstate))
+    x = A.new_zeros((dim, dstate))
 
-    deltaA = torch.exp(torch.einsum('bdl,dn->bdln', delta, A))
-    deltaB_u = torch.einsum('bdl,bnl,bdl->bdln', delta, B, u)
+    deltaA = torch.exp(torch.einsum('dl,dn->dln', delta, A))
+    deltaB_u = torch.einsum('dl,nl,dl->dln', delta, B, u)
 
     ys = []
     for i in range(seqlen):
-        x = deltaA[:, :, i] * x + deltaB_u[:, :, i]
-        y = torch.einsum('bdn,bn->bd', x, C[:, :, i])
+        x = deltaA[:, i] * x + deltaB_u[:, i]
+        y = torch.einsum('dn,n->d', x, C[:, i])
         #if y.is_complex():
         #    y = y.real * 2
         ys.append(y)
-    y = torch.stack(ys, dim=2) # (batch dim L)
+    y = torch.stack(ys, dim=1) # (dim L)
 
     out = y + u * rearrange(D, "d -> d 1")
     if z is not None:
