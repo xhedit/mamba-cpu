@@ -80,7 +80,7 @@ class Mamba(nn.Module):
         seqlen, dim = hidden_states.shape
 
         conv_state, ssm_state = self._get_states_from_cache(inference_params)
-        if inference_params.seqlen_offset > 0:
+        if True:  #if inference_params.seqlen_offset > 0:
             # The states are updated inplace
             out, _, _ = self.step(hidden_states, conv_state, ssm_state)
             return out

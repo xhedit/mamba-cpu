@@ -111,7 +111,6 @@ def decode(
     temperature=1.0,
     repetition_penalty=1.0,
     eos_token_id=None,
-    teacher_outputs=None,
     vocab_size=None,
     cg=False,
     enable_timing=False,
@@ -121,29 +120,25 @@ def decode(
     If top-k = 0, don't limit the number of candidates (pure sampling).
     Top-k and top-p can be used together. If top_k > 0 and top_p > 0, then top-k is applied first,
     then top-p.
-    We assume that all sequences in the same batch have the same length.
 
     Arguments:
-        input_ids: (batch, seq_len)
+        input_ids: (seq_len)
         max_length: int
-        teacher_outputs (optional): (batch, seq_len). If provided, instead of sampling from the
-            logits, the next token is taken from the teacher_outputs. Useful for testing.
     Returns: GreedySearchDecoderOnlyOutput or SampleDecoderOnlyOutput, with the following fields:
-        sequences: (batch, max_length)
-        scores: tuples of (batch, vocab_size)
+        sequence: (max_length)
+        scores: tuples of (vocab_size)
     """
     if streamer is not None:
         streamer.put(input_ids.cpu())
 
     seqlen_og = input_ids.shape
-    teacher_output_len = teacher_outputs.shape[1] if teacher_outputs is not None else 0
     inference_params = InferenceParams(max_seqlen=max_length)
 
-    def get_logits(input_ids, inference_params):
+    def get_logits(input_id):
         decoding = inference_params.seqlen_offset > 0
         if decoding:
             position_ids = torch.full(
-                (1,),
+                (1, 1),
                 inference_params.seqlen_offset,
                 dtype=torch.long,
                 device=input_ids.device,
@@ -151,21 +146,14 @@ def decode(
         else:
             position_ids = None
         logits = model(
-            input_ids,
+            input_id,
             position_ids=position_ids,
             inference_params=inference_params,
             num_last_tokens=1,
         ).logits.squeeze(dim=1)
         return logits[..., :vocab_size] if vocab_size is not None else logits
 
-    def sample_tokens(logits, inference_params):
-        if teacher_outputs is None or teacher_output_len <= inference_params.seqlen_offset:
-            token = sample(logits, top_k=top_k, top_p=top_p, temperature=temperature)
-        else:
-            token = teacher_outputs[:, inference_params.seqlen_offset]
-        return token
-
-    def should_stop(current_token, inference_params):
+    def should_stop(current_token):
         if inference_params.seqlen_offset == 0:
             return False
         if eos_token_id is not None and (current_token == eos_token_id).all():
@@ -174,26 +162,29 @@ def decode(
             return True
         return False
 
-    scores, sequences = [], [input_ids]
-    sequences_cat = input_ids
-    while not should_stop(sequences[-1], inference_params):
-        scores.append(get_logits(sequences[-1], inference_params))
-        inference_params.seqlen_offset += sequences[-1].shape[0]
-        if repetition_penalty == 1.0:
-            sampled_tokens = sample_tokens(scores[-1], inference_params)
+    scores, sequence = [], [input_ids[0:1]]
+    sequence_cat = input_ids
+    while not should_stop(sequence[-1]):
+        logits = get_logits(sequence[-1])
+        inference_params.seqlen_offset += 1
+        if inference_params.seqlen_offset < input_ids.shape[0]:
+            sampled_token = input_ids[inference_params.seqlen_offset:inference_params.seqlen_offset+1]
+        elif repetition_penalty == 1.0:
+            sampled_token = sample(logits, top_k=top_k, top_p=top_p, temperature=temperature)
         else:
             logits = modify_logit_for_repetition_penalty(
-                scores[-1].clone(), sequences_cat, repetition_penalty
+                logits.clone(), sequence_cat, repetition_penalty
             )
-            sampled_tokens = sample_tokens(logits, inference_params)
-            sequences_cat = torch.cat([sequences_cat, sampled_tokens], dim=0)
-        sequences.append(sampled_tokens)
+            sampled_token = sample(logits, top_k=top_k, top_p=top_p, temperature=temperature)
+            sequence_cat = torch.cat([sequence_cat, sampled_token], dim=0)
+        sequence.append(sampled_token)
+        scores.append(logits)
         if streamer is not None:
-            streamer.put(sampled_tokens.cpu())
+            streamer.put(sampled_token.cpu())
     if streamer is not None:
         streamer.end()
     output_cls = GreedySearchDecoderOnlyOutput if top_k == 1 else SampleDecoderOnlyOutput
-    return output_cls(sequences=torch.cat(sequences, dim=0), scores=tuple(scores))
+    return output_cls(sequences=torch.cat(sequence, dim=0), scores=tuple(scores))
 
 
 class GenerationMixin:
@@ -216,4 +207,4 @@ class GenerationMixin:
         )
         if not output_scores:
             output.scores = None
-        return output if return_dict_in_generate else output.sequences
+        return output if return_dict_in_generate else output.sequence
