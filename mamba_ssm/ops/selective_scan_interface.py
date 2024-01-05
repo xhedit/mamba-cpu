@@ -30,12 +30,12 @@ def selective_scan(u, delta, A, B, C, D=None, z=None):
     x = A.new_zeros((dim, dstate))
 
     deltaA = torch.exp(torch.einsum('dl,dn->dln', delta, A))
-    deltaB_u = torch.einsum('dl,nl,dl->dln', delta, B, u)
+    deltaB_u = torch.einsum('dl,ln,dl->dln', delta, B, u)
 
     ys = []
     for i in range(seqlen):
         x = deltaA[:, i] * x + deltaB_u[:, i]
-        y = torch.einsum('dn,n->d', x, C[:, i])
+        y = torch.einsum('dn,n->d', x, C[i])
         #if y.is_complex():
         #    y = y.real * 2
         ys.append(y)

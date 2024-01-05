@@ -88,8 +88,7 @@ class Mamba(nn.Module):
         # We do matmul and transpose LH -> HL at the same time
         xz = rearrange(
             self.in_proj.weight @ rearrange(hidden_states, "l d -> d l"),
-            "d l -> d l",
-            l=seqlen,
+            "d l -> d l"
         )
         if self.in_proj.bias is not None:
             xz = xz + rearrange(self.in_proj.bias.to(dtype=xz.dtype), "d -> d 1")
@@ -98,10 +97,11 @@ class Mamba(nn.Module):
         A = -torch.exp(self.A_log.float())  # (d_inner, d_state)
 
         # Compute short convolution
-        # If we just take x[:, :, -self.d_conv :], it will error if seqlen < self.d_conv
+        # If we just take x[:, -self.d_conv :], it will error if seqlen < self.d_conv
         # Instead F.pad will pad with zeros if seqlen < self.d_conv, and truncate otherwise.
         conv_state.copy_(F.pad(x, (self.d_conv - x.shape[-1], 0)))  # Update state (d w)
-        x = self.act(self.conv1d(x)[..., :seqlen])
+        x = self.conv1d(x)[..., :seqlen]
+        x = self.act(x)
 
         # We're careful here about the layout, to avoid extra transposes.
         # We want dt to have d as the slowest moving dimension
@@ -111,9 +111,6 @@ class Mamba(nn.Module):
 
         dt = self.dt_proj.weight @ dt.t()
         dt = F.softplus(dt + self.dt_proj.bias[..., None].float())
-
-        B = rearrange(B, "l dstate -> dstate l", l=seqlen).contiguous()
-        C = rearrange(C, "l dstate -> dstate l", l=seqlen).contiguous()
 
         assert self.activation in ["silu", "swish"]
         y, last_state = selective_scan(x, dt, A, B, C, self.D.float(), z)
