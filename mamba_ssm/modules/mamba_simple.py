@@ -10,7 +10,7 @@ from torch import Tensor
 
 from einops import rearrange, repeat
 
-from mamba_ssm.ops.layernorm import RMSNorm, rms_norm_fn
+from mamba_ssm.ops.layernorm import RMSNorm
 
 
 class Mamba(nn.Module):
@@ -107,19 +107,8 @@ class Mamba(nn.Module):
     def _get_states_from_cache(self, inference_params):
         assert self.layer_idx is not None
         if self.layer_idx not in inference_params.key_value_memory_dict:
-            conv_state = torch.zeros(
-                self.d_model * self.expand,
-                self.d_conv,
-                device=self.conv1d.weight.device,
-                dtype=self.conv1d.weight.dtype,
-            )
-            ssm_state = torch.zeros(
-                self.d_model * self.expand,
-                self.d_state,
-                device=self.dt_proj.weight.device,
-                dtype=self.dt_proj.weight.dtype,
-                # dtype=torch.float32,
-            )
+            conv_state = torch.zeros(self.d_model * self.expand, self.d_conv)
+            ssm_state  = torch.zeros(self.d_model * self.expand, self.d_state)
             inference_params.key_value_memory_dict[self.layer_idx] = (conv_state, ssm_state)
         else:
             conv_state, ssm_state = inference_params.key_value_memory_dict[self.layer_idx]
