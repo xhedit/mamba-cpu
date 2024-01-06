@@ -49,9 +49,6 @@ class Mamba(nn.Module):
             **factory_kwargs,
         )
 
-        self.activation = "silu"
-        self.act = nn.SiLU()
-
         self.x_proj = nn.Linear(
             self.d_inner, self.dt_rank + self.d_state * 2, bias=False, **factory_kwargs
         )
@@ -84,7 +81,7 @@ class Mamba(nn.Module):
         conv_state[:, -1] = x
         x = torch.sum(conv_state * rearrange(self.conv1d.weight, "d 1 w -> d w"), dim=-1)  # (d)
         x = x + self.conv1d.bias
-        x = self.act(x)
+        x = F.silu(x)
 
         x_db = self.x_proj(x)  # (dt_rank+2*d_state)
         dt, B, C = torch.split(x_db, [self.dt_rank, self.d_state, self.d_state], dim=-1)
@@ -102,7 +99,7 @@ class Mamba(nn.Module):
         ssm_state.copy_(ssm_state * dA + rearrange(x, "d -> d 1") * dB)
         y = torch.einsum("dn,n->d", ssm_state, C)
         y = y + self.D * x
-        y = y * self.act(z)  # (d)
+        y = y * F.silu(z)  # (d)
 
         out = self.out_proj(y)
         return out
