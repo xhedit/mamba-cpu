@@ -76,8 +76,8 @@ class Mamba(nn.Module):
 
         conv_state, ssm_state = self._get_states_from_cache(inference_params)
 
-        xz = self.in_proj(hidden_states.squeeze(1))  # (2d)
-        x, z = xz.chunk(2, dim=-1)  # (d)
+        xz = self.in_proj(hidden_states)  # (l 2d)
+        x, z = xz.chunk(2, dim=-1)  # (l d)
 
         # Conv step
         conv_state.copy_(torch.roll(conv_state, shifts=-1, dims=-1))  # Update state (d w)
