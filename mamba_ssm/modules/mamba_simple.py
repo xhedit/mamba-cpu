@@ -84,13 +84,13 @@ class Mamba(nn.Module):
         conv_state[:, -1] = x
         x = torch.sum(conv_state * rearrange(self.conv1d.weight, "d 1 w -> d w"), dim=-1)  # (d)
         x = x + self.conv1d.bias
-        x = self.act(x).to(dtype=dtype)
+        x = self.act(x)
 
         x_db = self.x_proj(x)  # (dt_rank+2*d_state)
         dt, B, C = torch.split(x_db, [self.dt_rank, self.d_state, self.d_state], dim=-1)
         # Don't add dt_bias here
         dt = F.linear(dt, self.dt_proj.weight)  # (d_inner)
-        dt = F.softplus(dt + self.dt_proj.bias.to(dtype=dt.dtype))
+        dt = F.softplus(dt + self.dt_proj.bias)
 
         # Initialize A only once per layer
         if self.A is None:
@@ -101,8 +101,8 @@ class Mamba(nn.Module):
         dA = torch.exp(torch.einsum("d,dn->dn", dt, self.A))
         dB = torch.einsum("d,n->dn", dt, B)
         ssm_state.copy_(ssm_state * dA + rearrange(x, "d -> d 1") * dB)
-        y = torch.einsum("dn,n->d", ssm_state.to(dtype), C)
-        y = y + self.D.to(dtype) * x
+        y = torch.einsum("dn,n->d", ssm_state, C)
+        y = y + self.D * x
         y = y * self.act(z)  # (d)
 
         out = self.out_proj(y)
