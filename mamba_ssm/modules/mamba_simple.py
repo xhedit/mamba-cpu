@@ -104,19 +104,6 @@ class Mamba(nn.Module):
         out = self.out_proj(y)
         return out
 
-    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
-        device = self.out_proj.weight.device
-        conv_dtype = self.conv1d.weight.dtype if dtype is None else dtype
-        conv_state = torch.zeros(
-            self.d_model * self.expand, self.d_conv, device=device, dtype=conv_dtype
-        )
-        ssm_dtype = self.dt_proj.weight.dtype if dtype is None else dtype
-        # ssm_dtype = torch.float32
-        ssm_state = torch.zeros(
-            self.d_model * self.expand, self.d_state, device=device, dtype=ssm_dtype
-        )
-        return conv_state, ssm_state
-
     def _get_states_from_cache(self, inference_params):
         assert self.layer_idx is not None
         if self.layer_idx not in inference_params.key_value_memory_dict:
@@ -176,11 +163,8 @@ class Block(nn.Module):
             residual: hidden_states = Mixer(LN(residual))
         """
         residual = (hidden_states + residual) if residual is not None else hidden_states
-        hidden_states = self.norm(residual.to(dtype=self.norm.weight.dtype))
+        hidden_states = self.norm(residual)
         if self.residual_in_fp32:
             residual = residual.to(torch.float32)
         hidden_states = self.mixer(hidden_states, inference_params=inference_params)
         return hidden_states, residual
-
-    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
-        return self.mixer.allocate_inference_cache(max_seqlen, dtype=dtype, **kwargs)

@@ -93,12 +93,6 @@ class MixerModel(nn.Module):
             d_model, eps=norm_epsilon, **factory_kwargs
         )
 
-    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
-        return {
-            i: layer.allocate_inference_cache(max_seqlen, dtype=dtype, **kwargs)
-            for i, layer in enumerate(self.layers)
-        }
-
     def forward(self, input_ids, inference_params=None):
         hidden_states = self.embedding(input_ids)
         residual = None
@@ -107,7 +101,7 @@ class MixerModel(nn.Module):
                 hidden_states, residual, inference_params=inference_params
             )
         residual = (hidden_states + residual) if residual is not None else hidden_states
-        hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))
+        hidden_states = self.norm_f(residual)
         return hidden_states
 
 
@@ -151,17 +145,8 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
     def tie_weights(self):
         self.lm_head.weight = self.backbone.embedding.weight
 
-    def allocate_inference_cache(self, max_seqlen, dtype=None, **kwargs):
-        return self.backbone.allocate_inference_cache(max_seqlen, dtype=dtype, **kwargs)
-
-    def forward(self, input_ids, position_ids=None, inference_params=None, num_last_tokens=0):
-        """
-        "position_ids" is just to be compatible with Transformer generation. We don't use it.
-        num_last_tokens: if > 0, only return the logits for the last n tokens
-        """
+    def forward(self, input_ids, inference_params=None):
         hidden_states = self.backbone(input_ids, inference_params=inference_params)
-        if num_last_tokens > 0:
-            hidden_states = hidden_states[-num_last_tokens:]
         lm_logits = self.lm_head(hidden_states)
         CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
         return CausalLMOutput(logits=lm_logits)

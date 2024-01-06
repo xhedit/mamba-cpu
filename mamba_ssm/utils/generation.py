@@ -135,21 +135,9 @@ def decode(
     inference_params = InferenceParams(max_seqlen=max_length)
 
     def get_logits(input_id):
-        decoding = inference_params.seqlen_offset > 0
-        if decoding:
-            position_ids = torch.full(
-                (1, 1),
-                inference_params.seqlen_offset,
-                dtype=torch.long,
-                device=input_ids.device,
-            )
-        else:
-            position_ids = None
         logits = model(
             input_id,
-            position_ids=position_ids,
             inference_params=inference_params,
-            num_last_tokens=1,
         ).logits.squeeze(dim=1)
         return logits[..., :vocab_size] if vocab_size is not None else logits
 
@@ -188,9 +176,6 @@ def decode(
 
 
 class GenerationMixin:
-    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
-        raise NotImplementedError
-
     def generate(
         self,
         input_ids,
