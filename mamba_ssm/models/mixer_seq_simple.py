@@ -13,7 +13,7 @@ from mamba_ssm.models.config_mamba import MambaConfig
 from mamba_ssm.modules.mamba_simple import Mamba, Block
 from mamba_ssm.utils.generation import GenerationMixin
 from mamba_ssm.utils.hf import load_config_hf, load_state_dict_hf
-from mamba_ssm.ops.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
+from mamba_ssm.ops.layernorm import RMSNorm, rms_norm_fn
 
 
 def create_block(
@@ -72,9 +72,6 @@ class MixerModel(nn.Module):
         # the main branch (output of MLP / Mixer). The model definition is unchanged.
         # This is for performance reason: we can fuse add + layer_norm.
         self.fused_add_norm = fused_add_norm
-        if self.fused_add_norm:
-            if layer_norm_fn is None or rms_norm_fn is None:
-                raise ImportError("Failed to import LayerNorm / RMSNorm kernels")
 
         self.layers = nn.ModuleList(
             [
