@@ -88,9 +88,8 @@ class Mamba(nn.Module):
 
         x_db = self.x_proj(x)  # (dt_rank+2*d_state)
         dt, B, C = torch.split(x_db, [self.dt_rank, self.d_state, self.d_state], dim=-1)
-        # Don't add dt_bias here
-        dt = F.linear(dt, self.dt_proj.weight)  # (d_inner)
-        dt = F.softplus(dt + self.dt_proj.bias)
+        dt = self.dt_proj(dt)  # (d_inner)
+        dt = F.softplus(dt)
 
         # Initialize A only once per layer
         if self.A is None:
