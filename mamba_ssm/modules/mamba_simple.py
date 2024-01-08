@@ -119,16 +119,7 @@ class Block(nn.Module):
         self, dim, mixer_cls, norm_cls=nn.LayerNorm, fused_add_norm=False, residual_in_fp32=False
     ):
         """
-        Simple block wrapping a mixer class with LayerNorm/RMSNorm and residual connection"
-
-        This Block has a slightly different structure compared to a regular
-        prenorm Transformer block.
-        The standard block is: LN -> MHA/MLP -> Add.
-        [Ref: https://arxiv.org/abs/2002.04745]
-        Here we have: Add -> LN -> Mixer, returning both
-        the hidden_states (output of the mixer) and the residual.
-        This is purely for performance reasons, as we can fuse add and LayerNorm.
-        The residual needs to be provided (except for the very first block).
+        Simple block wrapping a mixer class with RMSNorm and residual connection
         """
         super().__init__()
         self.residual_in_fp32 = residual_in_fp32
@@ -142,15 +133,14 @@ class Block(nn.Module):
             ), "Only LayerNorm and RMSNorm are supported for fused_add_norm"
 
     def forward(
-        self, hidden_states: Tensor, residual: Optional[Tensor] = None, inference_params=None
+        self, hidden_states: Tensor, inference_params=None
     ):
         r"""Pass the input through the encoder layer.
-
         Args:
             hidden_states: the sequence to the encoder layer (required).
-            residual: hidden_states = Mixer(LN(residual))
         """
-        residual = (hidden_states + residual) if residual is not None else hidden_states
-        hidden_states = self.norm(residual)
+        residual = hidden_states
+        hidden_states = self.norm(hidden_states)
         hidden_states = self.mixer(hidden_states, inference_params=inference_params)
-        return hidden_states, residual
+        hidden_states += residual
+        return hidden_states
