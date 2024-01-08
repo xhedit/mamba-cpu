@@ -67,7 +67,6 @@ class Mamba(nn.Module):
         hidden_states: (L, D)
         Returns: same shape as hidden_states
         """
-        dtype = hidden_states.dtype
         seqlen, dim = hidden_states.shape
         assert seqlen == 1, "Can decode only 1 token at a time"
 
@@ -107,8 +106,8 @@ class Mamba(nn.Module):
     def _get_states_from_cache(self, inference_params):
         assert self.layer_idx is not None
         if self.layer_idx not in inference_params.key_value_memory_dict:
-            conv_state = torch.zeros(self.d_model * self.expand, self.d_conv)
-            ssm_state  = torch.zeros(self.d_model * self.expand, self.d_state)
+            conv_state = torch.zeros(self.d_inner, self.d_conv)
+            ssm_state  = torch.zeros(self.d_inner, self.d_state)
             inference_params.key_value_memory_dict[self.layer_idx] = (conv_state, ssm_state)
         else:
             conv_state, ssm_state = inference_params.key_value_memory_dict[self.layer_idx]
@@ -153,7 +152,5 @@ class Block(nn.Module):
         """
         residual = (hidden_states + residual) if residual is not None else hidden_states
         hidden_states = self.norm(residual)
-        if self.residual_in_fp32:
-            residual = residual.to(torch.float32)
         hidden_states = self.mixer(hidden_states, inference_params=inference_params)
         return hidden_states, residual
