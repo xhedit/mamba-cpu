@@ -10,7 +10,7 @@ from torch import Tensor
 
 from einops import rearrange, repeat
 
-from mamba_ssm.ops.layernorm import RMSNorm
+from mamba_ssm.layernorm import RMSNorm
 
 
 class Mamba(nn.Module):
