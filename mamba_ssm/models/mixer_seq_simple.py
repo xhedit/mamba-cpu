@@ -21,8 +21,6 @@ def create_block(
     ssm_cfg=None,
     norm_epsilon=1e-5,
     rms_norm=False,
-    residual_in_fp32=False,
-    fused_add_norm=False,
     layer_idx=None,
     device=None,
     dtype=None,
@@ -34,13 +32,7 @@ def create_block(
     norm_cls = partial(
         nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon, **factory_kwargs
     )
-    block = Block(
-        d_model,
-        mixer_cls,
-        norm_cls=norm_cls,
-        fused_add_norm=fused_add_norm,
-        residual_in_fp32=residual_in_fp32,
-    )
+    block = Block(d_model, mixer_cls, norm_cls=norm_cls)
     block.layer_idx = layer_idx
     return block
 
@@ -55,18 +47,13 @@ class MixerModel(nn.Module):
         norm_epsilon: float = 1e-5,
         rms_norm: bool = False,
         initializer_cfg=None,
-        fused_add_norm=False,
-        residual_in_fp32=False,
         device=None,
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
-        self.residual_in_fp32 = residual_in_fp32
 
         self.embedding = nn.Embedding(vocab_size, d_model, **factory_kwargs)
-
-        self.fused_add_norm = fused_add_norm
 
         self.layers = nn.ModuleList(
             [
@@ -75,8 +62,6 @@ class MixerModel(nn.Module):
                     ssm_cfg=ssm_cfg,
                     norm_epsilon=norm_epsilon,
                     rms_norm=rms_norm,
-                    residual_in_fp32=residual_in_fp32,
-                    fused_add_norm=fused_add_norm,
                     layer_idx=i,
                     **factory_kwargs,
                 )
@@ -111,8 +96,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
         vocab_size = config.vocab_size
         ssm_cfg = config.ssm_cfg
         rms_norm = config.rms_norm
-        residual_in_fp32 = config.residual_in_fp32
-        fused_add_norm = config.fused_add_norm
         pad_vocab_size_multiple = config.pad_vocab_size_multiple
         factory_kwargs = {"device": device, "dtype": dtype}
 
@@ -126,8 +109,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
             ssm_cfg=ssm_cfg,
             rms_norm=rms_norm,
             initializer_cfg=initializer_cfg,
-            fused_add_norm=fused_add_norm,
-            residual_in_fp32=residual_in_fp32,
             **factory_kwargs,
         )
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False, **factory_kwargs)

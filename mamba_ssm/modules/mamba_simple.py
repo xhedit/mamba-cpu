@@ -115,30 +115,16 @@ class Mamba(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(
-        self, dim, mixer_cls, norm_cls=nn.LayerNorm, fused_add_norm=False, residual_in_fp32=False
-    ):
+    def __init__(self, dim, mixer_cls, norm_cls=nn.LayerNorm):
         """
         Simple block wrapping a mixer class with RMSNorm and residual connection
         """
         super().__init__()
-        self.residual_in_fp32 = residual_in_fp32
-        self.fused_add_norm = fused_add_norm
         self.mixer = mixer_cls(dim)
         self.norm = norm_cls(dim)
-        if self.fused_add_norm:
-            assert RMSNorm is not None, "RMSNorm import fails"
-            assert isinstance(
-                self.norm, (nn.LayerNorm, RMSNorm)
-            ), "Only LayerNorm and RMSNorm are supported for fused_add_norm"
 
-    def forward(
-        self, hidden_states: Tensor, inference_params=None
-    ):
-        r"""Pass the input through the encoder layer.
-        Args:
-            hidden_states: the sequence to the encoder layer (required).
-        """
+    def forward(self, hidden_states: Tensor, inference_params=None):
+        """Pass the input through the encoder layer. """
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.mixer(hidden_states, inference_params=inference_params)

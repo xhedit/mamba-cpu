@@ -17,7 +17,7 @@ class RMSNorm(torch.nn.Module):
     def reset_parameters(self):
         torch.nn.init.ones_(self.weight)
 
-    def forward(self, x, residual=None, residual_in_fp32=False):
+    def forward(self, x, residual=None):
         weight = self.weight
         bias = self.bias
         eps = self.eps
