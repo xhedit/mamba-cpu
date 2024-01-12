@@ -24,10 +24,7 @@ class Mamba(nn.Module):
         conv_bias=True,
         bias=False,
         layer_idx=None,
-        device=None,
-        dtype=None,
     ):
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.d_model = d_model
         self.d_state = d_state
@@ -37,7 +34,7 @@ class Mamba(nn.Module):
         self.dt_rank = math.ceil(self.d_model / 16) if dt_rank == "auto" else dt_rank
         self.layer_idx = layer_idx
 
-        self.in_proj = nn.Linear(self.d_model, self.d_inner * 2, bias=bias, **factory_kwargs)
+        self.in_proj = nn.Linear(self.d_model, self.d_inner * 2, bias=bias)
 
         self.conv1d = nn.Conv1d(
             in_channels=self.d_inner,
@@ -46,21 +43,19 @@ class Mamba(nn.Module):
             kernel_size=d_conv,
             groups=self.d_inner,
             padding=d_conv - 1,
-            **factory_kwargs,
         )
 
         self.x_proj = nn.Linear(
-            self.d_inner, self.dt_rank + self.d_state * 2, bias=False, **factory_kwargs
+            self.d_inner, self.dt_rank + self.d_state * 2, bias=False
         )
-        self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True, **factory_kwargs)
+        self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True)
 
-        self.A_log = nn.Parameter(torch.empty(self.d_inner, self.d_state, **factory_kwargs))
+        self.A_log = nn.Parameter(torch.empty(self.d_inner, self.d_state))
         self.A = None
 
-        # D "skip" parameter
-        self.D = nn.Parameter(torch.ones(self.d_inner, device=device))  # Keep in fp32
+        self.D = nn.Parameter(torch.empty(self.d_inner))
 
-        self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=bias, **factory_kwargs)
+        self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=bias)
 
     def forward(self, hidden_states, inference_params=None):
         """

@@ -22,16 +22,11 @@ def create_block(
     norm_epsilon=1e-5,
     rms_norm=False,
     layer_idx=None,
-    device=None,
-    dtype=None,
 ):
     if ssm_cfg is None:
         ssm_cfg = {}
-    factory_kwargs = {"device": device, "dtype": dtype}
-    mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg, **factory_kwargs)
-    norm_cls = partial(
-        nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon, **factory_kwargs
-    )
+    mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg)
+    norm_cls = partial(RMSNorm, eps=norm_epsilon)
     block = Block(d_model, mixer_cls, norm_cls=norm_cls)
     block.layer_idx = layer_idx
     return block
@@ -50,10 +45,9 @@ class MixerModel(nn.Module):
         device=None,
         dtype=None,
     ) -> None:
-        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
 
-        self.embedding = nn.Embedding(vocab_size, d_model, **factory_kwargs)
+        self.embedding = nn.Embedding(vocab_size, d_model)
 
         self.layers = nn.ModuleList(
             [
@@ -63,14 +57,13 @@ class MixerModel(nn.Module):
                     norm_epsilon=norm_epsilon,
                     rms_norm=rms_norm,
                     layer_idx=i,
-                    **factory_kwargs,
                 )
                 for i in range(n_layer)
             ]
         )
 
         self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(
-            d_model, eps=norm_epsilon, **factory_kwargs
+            d_model, eps=norm_epsilon
         )
 
     def forward(self, input_ids, inference_params=None):
@@ -97,7 +90,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
         ssm_cfg = config.ssm_cfg
         rms_norm = config.rms_norm
         pad_vocab_size_multiple = config.pad_vocab_size_multiple
-        factory_kwargs = {"device": device, "dtype": dtype}
 
         super().__init__()
         if vocab_size % pad_vocab_size_multiple != 0:
@@ -109,9 +101,8 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
             ssm_cfg=ssm_cfg,
             rms_norm=rms_norm,
             initializer_cfg=initializer_cfg,
-            **factory_kwargs,
         )
-        self.lm_head = nn.Linear(d_model, vocab_size, bias=False, **factory_kwargs)
+        self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
         self.tie_weights()
 
     def tie_weights(self):
