@@ -41,9 +41,6 @@ class MixerModel(nn.Module):
         ssm_cfg=None,
         norm_epsilon: float = 1e-5,
         rms_norm: bool = False,
-        initializer_cfg=None,
-        device=None,
-        dtype=None,
     ) -> None:
         super().__init__()
 
@@ -79,9 +76,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
     def __init__(
         self,
         config: MambaConfig,
-        initializer_cfg=None,
-        device=None,
-        dtype=None,
     ) -> None:
         self.config = config
         d_model = config.d_model
@@ -100,7 +94,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
             vocab_size=vocab_size,
             ssm_cfg=ssm_cfg,
             rms_norm=rms_norm,
-            initializer_cfg=initializer_cfg,
         )
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
         self.tie_weights()
@@ -118,6 +111,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
     def from_pretrained(cls, pretrained_model_name, device=None, dtype=None, **kwargs):
         config_data = load_config_hf(pretrained_model_name)
         config = MambaConfig(**config_data)
-        model = cls(config, device=device, dtype=dtype, **kwargs)
+        model = cls(config, **kwargs)
         model.load_state_dict(load_state_dict_hf(pretrained_model_name, device=device, dtype=dtype))
         return model
