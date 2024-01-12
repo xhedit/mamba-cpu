@@ -17,16 +17,11 @@ class InferenceParams:
     """Inference parameters that are passed to the main model in order
     to efficienly calculate and store the context during inference."""
 
-    max_seqlen: int
-    max_batch_size: int = 1
     seqlen_offset: int = 0
-    batch_size_offset: int = 0
     key_value_memory_dict: dict = field(default_factory=dict)
     lengths_per_sample: Optional[Tensor] = None
 
-    def reset(self, max_seqlen, max_batch_size):
-        self.max_seqlen = max_seqlen
-        self.max_batch_size = max_batch_size
+    def reset(self):
         self.seqlen_offset = 0
         if self.lengths_per_sample is not None:
             self.lengths_per_sample.zero_()
@@ -130,7 +125,7 @@ def decode(
         streamer.put(input_ids.cpu())
 
     seqlen_og = input_ids.shape
-    inference_params = InferenceParams(max_seqlen=max_length)
+    inference_params = InferenceParams()
 
     def get_logits(input_id):
         logits = model(input_id, inference_params=inference_params).logits.squeeze(dim=1)

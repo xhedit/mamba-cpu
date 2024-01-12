@@ -23,7 +23,6 @@ parser.add_argument("--temperature", type=float, default=1.0)
 parser.add_argument("--topk", type=int, default=1)
 parser.add_argument("--topp", type=float, default=1.0)
 parser.add_argument("--repetition-penalty", type=float, default=1.0)
-parser.add_argument("--batch", type=int, default=1)
 args = parser.parse_args()
 
 device = "cpu"
@@ -44,8 +43,8 @@ start = time.time()
 
 torch.random.manual_seed(0)
 if args.prompt is None:
-    input_ids = torch.randint(1, 1000, (args.batch, args.promptlen), dtype=torch.long, device="cuda")
-    attn_mask = torch.ones_like(input_ids, dtype=torch.long, device="cuda")
+    input_ids = torch.randint(1, 1000, (1, args.promptlen), dtype=torch.long)
+    attn_mask = torch.ones_like(input_ids, dtype=torch.long)
 else:
     tokens = tokenizer(args.prompt, return_tensors="pt")
     input_ids = tokens.input_ids.to(device=device)
