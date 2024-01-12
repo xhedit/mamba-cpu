@@ -1,5 +1,5 @@
 # Copyright (c) 2023, Tri Dao.
-# Implement residual + rms_norm.
+# Implement rms_norm
 
 import math
 import torch

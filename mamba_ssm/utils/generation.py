@@ -96,9 +96,7 @@ def sample(logits, top_k=1, top_p=0.0, temperature=1.0):
             # Clone so that when we modify for top_p we don't change the original logits
             logits_top = logits / temperature if temperature != 1.0 else logits.clone()
             modify_logits_for_top_p_filtering(logits_top, top_p)
-            return torch.multinomial(torch.softmax(logits_top, dim=-1), num_samples=1).squeeze(
-                dim=-1
-            )
+            return torch.multinomial(torch.softmax(logits_top, dim=-1), num_samples=1).squeeze(dim=-1)
 
 
 @torch.inference_mode()
@@ -135,10 +133,7 @@ def decode(
     inference_params = InferenceParams(max_seqlen=max_length)
 
     def get_logits(input_id):
-        logits = model(
-            input_id,
-            inference_params=inference_params,
-        ).logits.squeeze(dim=1)
+        logits = model(input_id, inference_params=inference_params).logits.squeeze(dim=1)
         return logits[..., :vocab_size] if vocab_size is not None else logits
 
     def should_stop(current_token):
@@ -187,9 +182,7 @@ class GenerationMixin:
         output_scores=False,
         **kwargs,
     ):
-        output = decode(
-            input_ids, self, max_length, top_k=top_k, top_p=top_p, temperature=temperature, **kwargs
-        )
+        output = decode(input_ids, self, max_length, top_k=top_k, top_p=top_p, temperature=temperature, **kwargs)
         if not output_scores:
             output.scores = None
         return output if return_dict_in_generate else output.sequence

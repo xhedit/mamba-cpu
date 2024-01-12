@@ -45,9 +45,7 @@ class Mamba(nn.Module):
             padding=d_conv - 1,
         )
 
-        self.x_proj = nn.Linear(
-            self.d_inner, self.dt_rank + self.d_state * 2, bias=False
-        )
+        self.x_proj = nn.Linear(self.d_inner, self.dt_rank + self.d_state * 2, bias=False)
         self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True)
 
         self.A_log = nn.Parameter(torch.empty(self.d_inner, self.d_state))
@@ -110,16 +108,14 @@ class Mamba(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, dim, mixer_cls, norm_cls=nn.LayerNorm):
-        """
-        Simple block wrapping a mixer class with RMSNorm and residual connection
-        """
+    def __init__(self, dim, mixer_cls, norm_cls):
+        """ Simple block wrapping a mixer class with RMSNorm and residual connection """
         super().__init__()
         self.mixer = mixer_cls(dim)
         self.norm = norm_cls(dim)
 
     def forward(self, hidden_states: Tensor, inference_params=None):
-        """Pass the input through the encoder layer. """
+        """ Pass the input through the encoder layer """
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.mixer(hidden_states, inference_params=inference_params)
