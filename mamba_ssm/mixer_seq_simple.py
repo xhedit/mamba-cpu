@@ -2,7 +2,6 @@
 
 import math
 from functools import partial
-import os
 
 from collections import namedtuple
 
