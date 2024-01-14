@@ -34,7 +34,6 @@ class Mamba(nn.Module):
         self.layer_idx = layer_idx
 
         self.in_proj = nn.Linear(self.d_model, self.d_inner * 2, bias=bias)
-
         self.conv1d = nn.Conv1d(
             in_channels=self.d_inner,
             out_channels=self.d_inner,
@@ -43,15 +42,11 @@ class Mamba(nn.Module):
             groups=self.d_inner,
             padding=d_conv - 1,
         )
-
         self.x_proj = nn.Linear(self.d_inner, self.dt_rank + self.d_state * 2, bias=False)
         self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True)
-
         self.A_log = nn.Parameter(torch.empty(self.d_inner, self.d_state))
         self.A = None
-
         self.D = nn.Parameter(torch.empty(self.d_inner))
-
         self.out_proj = nn.Linear(self.d_inner, self.d_model, bias=bias)
 
     def forward(self, hidden_states, inference_params=None):

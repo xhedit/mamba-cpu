@@ -19,7 +19,6 @@ def create_block(
     d_model,
     ssm_cfg=None,
     norm_epsilon=1e-5,
-    rms_norm=False,
     layer_idx=None,
 ):
     if ssm_cfg is None:
@@ -39,25 +38,20 @@ class MixerModel(nn.Module):
         vocab_size: int,
         ssm_cfg=None,
         norm_epsilon: float = 1e-5,
-        rms_norm: bool = False,
     ) -> None:
         super().__init__()
-
         self.embedding = nn.Embedding(vocab_size, d_model)
-
         self.layers = nn.ModuleList(
             [
                 create_block(
                     d_model,
                     ssm_cfg=ssm_cfg,
                     norm_epsilon=norm_epsilon,
-                    rms_norm=rms_norm,
                     layer_idx=i,
                 )
                 for i in range(n_layer)
             ]
         )
-
         self.norm_f = RMSNorm(d_model, eps=norm_epsilon)
 
     def forward(self, input_ids, inference_params=None):
@@ -75,7 +69,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
         d_model = config.d_model
         n_layer = config.n_layer
         vocab_size = config.vocab_size
-        rms_norm = config.rms_norm
         pad_vocab_size_multiple = config.pad_vocab_size_multiple
         ssm_cfg = config.ssm_cfg
 
@@ -89,10 +82,9 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
             n_layer=n_layer,
             vocab_size=vocab_size,
             ssm_cfg=ssm_cfg,
-            rms_norm=rms_norm,
         )
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-        self.lm_head.weight = self.backbone.embedding.weight
+        self.lm_head.weight = self.backbone.embedding.weight  # Tied weights
 
     def forward(self, input_ids, inference_params=None):
         hidden_states = self.backbone(input_ids, inference_params=inference_params)
