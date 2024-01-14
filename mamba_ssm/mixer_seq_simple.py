@@ -15,12 +15,7 @@ from mamba_ssm.hf import load_config_hf, load_state_dict_hf
 from mamba_ssm.layernorm import RMSNorm
 
 
-def create_block(
-    d_model,
-    ssm_cfg=None,
-    norm_epsilon=1e-5,
-    layer_idx=None,
-):
+def create_block(d_model, ssm_cfg=None, norm_epsilon=1e-5, layer_idx=None):
     if ssm_cfg is None:
         ssm_cfg = {}
     mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg)
@@ -43,12 +38,7 @@ class MixerModel(nn.Module):
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.layers = nn.ModuleList(
             [
-                create_block(
-                    d_model,
-                    ssm_cfg=ssm_cfg,
-                    norm_epsilon=norm_epsilon,
-                    layer_idx=i,
-                )
+                create_block(d_model, ssm_cfg=ssm_cfg, norm_epsilon=norm_epsilon, layer_idx=i)
                 for i in range(n_layer)
             ]
         )
@@ -84,7 +74,7 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
             ssm_cfg=ssm_cfg,
         )
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-        self.lm_head.weight = self.backbone.embedding.weight  # Tied weights
+        self.lm_head.weight = self.backbone.embedding.weight  # tie with the embedding weights
 
     def forward(self, input_ids, inference_params=None):
         hidden_states = self.backbone(input_ids, inference_params=inference_params)
